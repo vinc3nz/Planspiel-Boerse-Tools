@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         Planspiel Börse - Tools
-// @namespace    http://tampermonkey.net/
-// @version      0.1
+// @namespace    https://trading.planspiel-boerse.de/
+// @version      0.2
 // @description  TamperMonkey script for customizing the Planspiel Börse Webapp
 // @author       Vincenz Ernst
 // @match        https://trading.planspiel-boerse.de/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=planspiel-boerse.de
 // @grant        none
 // @source       https://github.com/vinc3nz/Planspiel-Boerse-Tools
-// @updateURL    https://raw.githubusercontent.com/vinc3nz/Planspiel-Boerse-Tools/refs/heads/main/userscript.js
-// @downloadURL  https://raw.githubusercontent.com/vinc3nz/Planspiel-Boerse-Tools/refs/heads/main/userscript.js
+// @updateURL    https://raw.githubusercontent.com/vinc3nz/Planspiel-Boerse-Tools/refs/heads/main/boerse.user.js
+// @downloadURL  https://raw.githubusercontent.com/vinc3nz/Planspiel-Boerse-Tools/refs/heads/main/boerse.user.js
 // ==/UserScript==
 
 (function () {
@@ -52,7 +52,9 @@
     let portfolioID = parseJwt(window.localStorage.getItem("scat")).depotId;
 
     let res = await fetch(
-      "https://trading.planspiel-boerse.de/stockcontest/services/api/v-ms1/portfolio/getPortfolioWithItems?portfolioId=" + portfolioID + "&withItems=true&withOrderIds=true",
+      "https://trading.planspiel-boerse.de/stockcontest/services/api/v-ms1/portfolio/getPortfolioWithItems?portfolioId=" +
+        portfolioID +
+        "&withItems=true&withOrderIds=true",
       {
         credentials: "include",
         headers: {
@@ -143,21 +145,119 @@
     document.getElementById("table").appendChild(container);
   }
 
-  window.addEventListener("locationchange", function () {
-    if (
-      window.location.href.startsWith(
-        "https://trading.planspiel-boerse.de/web/account/depot/portfolio",
+  function fix_login_page() {
+    try {
+      document.querySelector(".buttons-align-bottom").outerHTML =
+        `<div class="buttons-align-bottom" onclick="psbt_login()"><button class="btn blue-buttons" id="psbt_login_btn"> Einloggen </button></div>`;
+
+      document.head.innerHTML += `<style>
+.lds-dual-ring,
+.lds-dual-ring:after {
+  box-sizing: border-box;
+}
+.lds-dual-ring {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+.lds-dual-ring:after {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 6.4px solid currentColor;
+  border-color: currentColor transparent currentColor transparent;
+  animation: lds-dual-ring 1.2s linear infinite;
+}
+@keyframes lds-dual-ring {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+</style>`;
+      document.body.innerHTML += `<script>function psbt_login() {
+      document.getElementById("psbt_login_btn").innerHTML =
+        '<div class="lds-dual-ring"></div>';
+
+      fetch(
+        "https://trading.planspiel-boerse.de/stockcontest/services/api/v-ms3/authenticate?nocache=" +
+          Date.now(),
+        {
+          credentials: "include",
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+            Accept: "application/json, text/plain",
+            "Accept-Language": "de,en-US;q=0.9,en;q=0.8",
+            "Content-Type": "application/json",
+            "Sec-GPC": "1",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            Priority: "u=0",
+            Pragma: "no-cache",
+            "Cache-Control": "no-cache",
+          },
+          referrer: "https://trading.planspiel-boerse.de/web/auth/login",
+          body: JSON.stringify({
+            password: document.getElementById("password").value,
+            userName: document.querySelector(
+              "input[formControlName='userName']",
+            ).value,
+          }),
+          method: "POST",
+          mode: "cors",
+        },
       )
-    ) {
-      run();
+        .then((res) => {
+          console.log(res.status, res.ok);
+          if (!res.ok) {
+            document.querySelector(".buttons-align-bottom").outerHTML =
+              '<div class="buttons-align-bottom" onclick="psbt_login()"><button class="btn blue-buttons" id="psbt_login_btn"> Passwort falsch </button></div>';
+          }
+          return res.json();
+        })
+        .then((res) => {
+          if (!res.result) {
+            console.log(res);
+            return;
+          }
+
+          window.localStorage.setItem("scat", res.result.token.accessToken);
+          window.localStorage.setItem("user", JSON.stringify(res.result.user));
+          window.location.href =
+            "https://trading.planspiel-boerse.de/web/dashboard";
+          document.querySelector(".buttons-align-bottom").outerHTML =
+            '<div class="buttons-align-bottom" onclick="psbt_login()"><button class="btn blue-buttons" id="psbt_login_btn"> Einloggen </button></div>';
+        });
     }
-  });
+</script>`;
+      console.log("Page modified.");
+    } catch (error) {
+      console.log("Page not (yet) modified...");
+    }
+  }
+
   if (
     window.location.href.startsWith(
       "https://trading.planspiel-boerse.de/web/account/depot/portfolio",
     )
   ) {
     run();
+  }
+
+  if (
+    window.location.href.startsWith(
+      "https://trading.planspiel-boerse.de/web/auth/login",
+    )
+  ) {
+    fix_login_page();
+    setTimeout(fix_login_page, 100);
+    window.onload = fix_login_page;
   }
 
   var pushState = history.pushState;
@@ -169,6 +269,15 @@
       )
     ) {
       run();
+    }
+    if (
+      window.location.href.startsWith(
+        "https://trading.planspiel-boerse.de/web/auth/login",
+      )
+    ) {
+      fix_login_page();
+      setTimeout(fix_login_page, 100);
+      window.onload = fix_login_page;
     }
   };
 })();
